@@ -1,2 +1,1 @@
-File  Modif via master Text 1
-File  Modification 3 Text 1
+File Merge with conflicts Text 1
