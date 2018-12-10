@@ -1,0 +1,733 @@
+package com.arcadsoftware.testgit02.git;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.LsRemoteCommand;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.diff.DiffEntry;
+import org.eclipse.jgit.errors.AmbiguousObjectException;
+import org.eclipse.jgit.errors.IncorrectObjectTypeException;
+import org.eclipse.jgit.errors.RevisionSyntaxException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+
+public class TestGit02 {
+	
+	
+	/**
+	 * @param args
+	 */
+	public static void main(String[] args) {
+		int rtncode = 0;
+		// Checks the action code
+		boolean help0 = true;
+		if ((args.length>0)) {
+			if (args[0].contentEquals("lclrepo") ||
+				args[0].contentEquals("stage") ||
+				args[0].contentEquals("commit") ||
+				args[0].contentEquals("push") ||
+				args[0].contentEquals("checkout") || 
+				args[0].contentEquals("listchange")  
+					) {
+				help0 = false;
+			}
+		}
+         
+		if (help0) {
+			System.out.println("Usage for param #1:");
+			System.out.println("  lclrepo  : check or create a local repository");
+			System.out.println("  stage    : add - or delete - files to \"stage\"");
+			System.out.println("  commit   : commit \"stage\" to local repository");
+			System.out.println("  push     : push committed files to remote repository");
+			System.out.println("  checkout : checkout files from remote repository");
+			rtncode = 100;
+			System.exit(rtncode);
+			return;
+		}
+
+		TestGit02 test = new TestGit02();
+		//  Dispatch depending on the action type
+		switch (args[0]) {
+			// ----------------------------------------------------
+	        case "lclrepo" :  {
+				if (args.length!=6) { 
+					System.out.println("Usage for \"lclrepo\":");
+					System.out.println("param #1: \"lclrepo\"");
+					System.out.println("param #2: Option:1=check local repository, 2=check remote connection, 3=clone repository");
+					System.out.println("param #3: Git Reposiroty URL (starting with ssh) (for option 2 or 3)");
+					System.out.println("param #4: Branch Name");
+					System.out.println("param #5: Local Directory");
+					System.out.println("param #6: SSH Private Key File (for option 2 or 3)");
+					rtncode = 101;
+		        	break;
+				}
+				if (!args[1].contentEquals("1") &&
+					 !args[1].contentEquals("2") &&
+					 !args[1].contentEquals("3")) {
+					 rtncode = 101;
+					System.out.println("for lclrepo, param #2: Option:1=check local repository, 2=check remote connection, 3=clone repository");
+				   	break;
+				}
+				rtncode = 11;
+				// Vérification repository local
+				boolean LclRepoOk = false;
+				if (args[1].contentEquals("1") ||
+				    args[1].contentEquals("3")) {
+					LclRepoOk = test.CheckLocalRepository(args[4]);
+					// Option 1 : pas ok : référentiel non trouvé
+					if(!LclRepoOk && args[1].contentEquals("1")) {
+						System.out.println("local repository for " + args[4] + "not ok");
+						rtncode = 112;
+						break;
+					}
+					// Option 3 : pas ok : référentiel déjà trouvé
+					if(LclRepoOk && args[1].contentEquals("3")) {
+						System.out.println("local repository " + args[4] + " already exists");
+						rtncode = 113;
+						break;
+					}
+				}
+				// Vérification repository distant
+				boolean RemoteRepoOk = false;
+				if (args[1].contentEquals("2") ||
+				    args[1].contentEquals("3")) {
+					RemoteRepoOk = test.CheckRemoteRepository(args[2],
+				             "","",			
+				            args[3], // Branch Name
+				            args[4], // Target Directory
+				            args[5]); // Private SSH Key file
+					// Option 1 : pas ok : référentiel non trouvé
+					if(!RemoteRepoOk) {
+						System.out.println("Pb connection to remote repository for " + args[2] + "not ok");
+						rtncode = 114;
+						break;
+					}
+				}
+				// Besoin de creation Repository local
+			    if (args[1].contentEquals("3")) {
+					// Need to create the local repository from the remote branch
+					if(!test.BuildLocalRepository(args[2],
+				             "","",			
+				            args[3], // Branch Name
+				            args[4], // Target Directory
+				            args[5])) // Private SSH Key file
+					{
+						System.out.println("Error in 'clone' process");
+						rtncode = 115;
+					}
+					else {
+						System.out.println("'clone' process done");
+						rtncode = 12;
+						// Test if lcl repository is known
+						if (!test.CheckLocalRepository(args[4])) {
+							System.out.println("but local repository not ok");
+							rtncode = 116;
+						}
+					}
+				    ;
+				}
+				
+	        	break;
+	        }
+			// ----------------------------------------------------
+	        case "stage" :  {
+				if (args.length!=4) { 
+					System.out.println("Usage for \"stage\":");
+					System.out.println("param #1: \"stage\"");
+					System.out.println("param #2: Branch name");
+					System.out.println("param #3: Local Directory");
+					System.out.println("param #4: File of files to add/delete into stage");
+					System.out.println("     with in each line:");
+					System.out.println("       In position 1: '+' or '-' for add or delete action");
+					System.out.println("       From position 2: name of the file");
+					rtncode = 101;
+		        	break;
+				}
+				test.getStageFiles(
+						args[1], // Branch name
+						args[2], // Local Directory
+						args[3]) // File of files to put in Stage
+			            ;
+				rtncode = 21;
+	        	break;
+	        }
+			// ----------------------------------------------------
+	        case "commit" :  {
+				if (args.length!=6) { 
+					System.out.println("Usage for \"commit\":");
+					System.out.println("param #1: \"commit\"");
+					System.out.println("param #2: Branch name");
+					System.out.println("param #3: Local Directory");
+					System.out.println("param #4: Commit Message");
+					System.out.println("param #5: Commit User");
+					System.out.println("param #6: Commit Mail");
+					rtncode = 101;
+		        	break;
+				}
+		    	test.getCommitToLocalRepository(
+						args[1], // Branch name
+						args[2], // Local Directory
+						args[3], // Commit message
+						args[4], // Commit user
+						args[5]); // Commit mail
+				rtncode = 31;
+	        	break;
+	        }
+			// ----------------------------------------------------
+	        case "push" :  {
+				if (args.length!=5) { 
+					System.out.println("Usage for \"push\":");
+					System.out.println("param #1: \"push\"");
+					System.out.println("param #2: Git Reposiroty URL (starting with ssh)");
+					System.out.println("param #3: Branch Name");
+					System.out.println("param #4: Local Directory");
+					System.out.println("param #5: SSH Private Key File");
+					rtncode = 101;
+		        	break;
+				}
+				test.getPushToRemoteRepository( 
+					args[1],
+					"", "",
+		            args[2], // Branch Name
+		            args[3], // Target Directory
+		            args[4]) // Private SSH Key file
+		            ;
+				rtncode = 41;
+	        	break;
+	        }
+			// ----------------------------------------------------
+	        case "checkout" :  {
+				if (args.length!=6) { 
+					System.out.println("Usage for \"checkout\":");
+					System.out.println("param #1: \"checkout\"");
+					System.out.println("param #2: Git Reposiroty URL (starting with ssh)");
+					System.out.println("param #3: Branch Name");
+					System.out.println("param #4: Local Directory");
+					System.out.println("param #5: SSH Private Key File");
+					System.out.println("param #6: File of files to checkout");
+					System.out.println("     (with one line per file)");
+					rtncode = 101;
+		        	break;
+				}
+				test.getFilesFromRemoteRepository(
+						args[1],
+			             "","",			
+			            args[2], // Branch Name
+			            args[3], // Target Directory
+			            args[4], // Private SSH Key file
+						args[5]) // File of files to checkout
+			            ;
+					rtncode = 51;
+	        	break;
+	        }
+		// ----------------------------------------------------
+		    case "listchange" :  {
+				if (args.length!=7) { 
+					System.out.println("Usage for \"listchange\":");
+					System.out.println("param #1: \"listchange\"");
+					System.out.println("param #2: Git Reposiroty URL (starting with ssh)");
+					System.out.println("param #3: Branch Name");
+					System.out.println("param #4: Commit Uid (Tag)");
+					System.out.println("param #5: Local Directory");
+					System.out.println("param #6: SSH Private Key File");
+					System.out.println("param #7: Result File of files found");
+					System.out.println("     (with one line per file)");
+					rtncode = 101;
+		        	break;
+				}
+				else
+				{
+					if(test.getListChangeFromRemoteRepository(
+						args[1],
+			             "","",			
+			            args[2], // Branch Name
+			            args[3], // Commit Uid (Tag
+			            args[4], // Target Directory
+			            args[5], // Private SSH Key file
+						args[6]) // Result File of files found
+			            )
+						rtncode = 57;
+					else;
+						rtncode = 107;
+				}
+		    	break;
+		    }
+		    
+		    
+		    default :  {
+				System.out.println(" param#1 not ok");
+				rtncode = 100;
+    }
+}
+
+		System.exit(rtncode);
+				
+	}
+	/**
+	 * This method allows the user to check if a remote Repository can be connected 
+	 * @param url Remote repository URL (using ssh)
+	 * @param user User (not used)
+	 * @param password Password (not used)
+	 * @param branchName The name of the branch
+	 * @param targetDirectory The directory where the clone local repository will be created
+	 * @param sshpublickeyFilename The private ssh key used to connect the remote repository
+	 */
+	public boolean CheckRemoteRepository(String url, 
+			                    String user, String password,
+			                    String branchName,			                    
+			                    String targetDirectory, 
+			                    String sshpublickeyFilename){
+		File f = new File(sshpublickeyFilename);
+		//Cretae an instance of the manager
+		GITManager manager = new GITManager(url, user, password, f.getAbsolutePath());
+		// ---
+	    // Repository db = FileRepositoryBuilder.create(new File("/tmp"));
+	    // Git git = Git.wrap(db);
+		if(manager.checkRemoteGF())
+			return true;
+		else;
+			return false;
+	}
+	/* public boolean validateRepository(String repositoryURL, String username, String password) throws Exception {
+	    boolean result = false;
+	    Repository db = FileRepositoryBuilder.create(new File("/tmp"));
+	    Git git = Git.wrap(db);
+	    final LsRemoteCommand lsCmd = git.lsRemote();
+	    lsCmd.setRemote(repositoryURL);
+	    if (username != null && password != null) {
+	        lsCmd.setCredentialsProvider(new UsernamePasswordCredentialsProvider(username, password));
+	    }
+	    if (null != lsCmd.call()){
+	        result = true;
+	    }
+	    return result;
+	}	*/
+	/**
+	 * This method allows the user to get clone a Remote repository in order
+	 * to create an "empty" local repository
+	 * @param url Remote repository URL (using ssh)
+	 * @param user User (not used)
+	 * @param password Password (not used)
+	 * @param branchName The name of the branch
+	 * @param targetDirectory The directory where the clone local repository will be created
+	 * @param sshpublickeyFilename The private ssh key used to connect the remote repository
+	 */
+	public boolean BuildLocalRepository(String url, 
+			                    String user, String password,
+			                    String branchName,			                    
+			                    String targetDirectory, 
+			                    String sshpublickeyFilename){
+		File f = new File(sshpublickeyFilename);
+		//Cretae an instance of the manager
+		GITManager manager = new GITManager(url, user, password, f.getAbsolutePath());
+		//Clone the remote repository
+		Git gitInstance = 
+				manager.cloneRemoteRepository(targetDirectory, branchName);
+		//Clone the remote repository
+		if (gitInstance == null)
+				return false;
+		return true;
+	}
+	/**
+	 * This method allows the user to get files form a Remote repository only passing their paths
+	 * @param url Remote repository URL (using ssh)
+	 * @param user User (not used)
+	 * @param password Password (not used)
+	 * @param branchName The name of the branch
+	 * @param targetDirectory The directory where the clone local repository will be created
+	 * @param zipFileName The zip file name where the files will be stored
+	 * @param sshpublickeyFilename The private ssh key used to connect the remote repository
+	 */
+	public void getFilesFromRemoteRepository(String url, 
+			                    String user, String password,
+			                    String branchName,			                    
+			                    String targetDirectory, 
+			                    String sshpublickeyFilename,
+        						String fileListFileName) {
+		File f = new File(sshpublickeyFilename);
+		//Cretae an instance of the existing repository
+		GITManager manager = new GITManager(url, user, password, f.getAbsolutePath());
+		Git gitInstance = manager.getGitInstance2(targetDirectory, branchName);
+		
+		if (gitInstance!=null) {
+			// Fait 2 passages afin de savoir tailler paths[nbpaths] correctement
+			int nbpaths = 1;
+			for(int npassage = 1; npassage<=2; npassage++)
+			{
+				int ixpaths = 0;
+				//Select object to get
+				String[] paths = new String[nbpaths];   // taille dynamique 
+				// This will reference one line at a time
+		        String line = null;
+	
+		        try {
+		            // FileReader reads text files in the default encoding.
+		            FileReader fileReader = 
+		                new FileReader(fileListFileName);
+	
+		            // Always wrap FileReader in BufferedReader.
+		            BufferedReader bufferedReader = 
+		                new BufferedReader(fileReader);
+	
+		            while((line = bufferedReader.readLine()) != null) {
+		            	if(npassage==1)
+		            		nbpaths+=1;
+		            	else
+		            	{
+		            		paths[ixpaths] = line;
+		            		ixpaths += 1;
+		            	}
+		            }   
+	
+		            // Always close files.
+		            bufferedReader.close();         
+		        }
+		        catch(FileNotFoundException ex) {
+		            System.out.println(
+		                "Unable to open file '" + 
+		                		fileListFileName + "'");                
+		        }
+		        catch(IOException ex) {
+		            System.out.println(
+		                "Error reading file '" 
+		                + fileListFileName + "'");                  
+		            // Or we could just do this: 
+		            // ex.printStackTrace();
+		        }
+
+            	if(npassage==1)
+			        nbpaths-=1;
+            	if(npassage==2)
+	            	{
+				    nbpaths-=1;
+					String zipFileName = new String(targetDirectory + "/zipfile01.zip");
+					File zipFile = manager.createArchiveFile(gitInstance, zipFileName, paths, branchName);
+					
+					if (zipFile!=null) { //If archive file has been correctly created
+						//Unzip this file into the targetDirectory
+						boolean unzipped = ZipUtils.unzipFile(zipFile, targetDirectory);
+						if (unzipped) {//If unzipping has been correctly done
+							// do something
+						}
+					}
+            	}
+			}
+		}
+	}
+	
+	/**
+	 * This method allows the user to get files form a Remote repository only passing their paths
+	 * @param url Remote repository URL (using ssh)
+	 * @param user User (not used)
+	 * @param password Password (not used)
+	 * @param branchName The name of the branch
+	 * @param targetDirectory The directory where the clone local repository will be created
+	 * @param zipFileName The zip file name where the files will be stored
+	 * @param sshpublickeyFilename The private ssh key used to connect the remote repository
+	 */
+	public void getStageFiles(String branchName,
+							  String targetDirectory, 
+        					  String fileListFileName) {
+		// Create an instance of the existing local repository only
+		GITManager manager = new GITManager("", "", "", "");
+		Git gitLocalInstance = manager.getGitInstance2(targetDirectory, branchName);
+		
+		if (gitLocalInstance!=null) {
+			if (manager.unstage2(gitLocalInstance)) {
+				//  
+				int nbpaths = 0;
+				// Select object to stage
+				String path = null;     
+				String action = null;     
+				// This will reference one line at a time
+			    String line = null;
+		        try {
+		            // FileReader reads text files in the default encoding.
+		            FileReader fileReader = 
+		                new FileReader(fileListFileName);
+	
+		            // Always wrap FileReader in BufferedReader.
+		            BufferedReader bufferedReader = 
+		                new BufferedReader(fileReader);
+	
+		            while((line = bufferedReader.readLine()) != null) {
+			            //
+			            action = line.substring(0 , 1);
+			            path = line.substring(1);
+						File file= new File(path);
+			    		//  Dispatch depending on the action type
+			    		switch (action) {
+			    			// ----------------------------------------------------
+			    	        case "+" :  {
+			    	    		if(manager.addFile2(gitLocalInstance, file)) 
+			    	    			System.out.println("ok : File in 'add' stage:" + path);
+			    	    		else
+			    	    			System.out.println("ERROR for file in 'add' stage:" + path);
+			            	break;
+			    	        }
+			    	        case "-" :  {
+			    	    		if(manager.rmvFile2(gitLocalInstance, file)) 
+			    	    			System.out.println("ok : File in 'rm' stage:" + path);
+			    	    		else
+			    	    			System.out.println("ERROR for file in 'rm' stage:" + path);
+			            	break;
+			            	}
+			    	        default : {
+				            System.out.println(
+					                "Invalid stage action for file: '" 
+					                + line + "'");
+			    	        }
+			            }
+		            }
+	
+		            // Always close files.
+		            bufferedReader.close();         
+		        }
+		        catch(FileNotFoundException ex) {
+		            System.out.println(
+		                "Unable to open file '" + 
+		                		fileListFileName + "'");                
+		        }
+		        catch(IOException ex) {
+		            System.out.println(
+		                "Error reading file '" 
+		                + fileListFileName + "'");                  
+		            // Or we could just do this: 
+		            // ex.printStackTrace();
+		        }
+
+			}
+			}
+			
+		}
+
+	
+	/**
+	 * This method allows the user to get files form a Remote repository only passing their paths
+	 */
+	public void getCommitToLocalRepository(
+			                    String branchName,		
+			                    String targetDirectory,
+			                    String commitMessage, 
+			                    String commitUser,
+			                    String commitEmail) {
+		// Create an instance of the existing local repository only
+		GITManager manager = new GITManager("", "", "", "");
+		Git gitLocalInstance = manager.getGitInstance2(targetDirectory, branchName);
+		
+		if (gitLocalInstance!=null) {
+		if(manager.commit2(gitLocalInstance, commitMessage,commitUser, commitEmail))
+			System.out.println("ok : Commit done");
+		else
+			System.out.println("ERROR for commit action");
+		}
+			
+	}	
+	
+	public void getPushToRemoteRepository(String url, 
+            String user, String password,
+            String branchName,		
+            String targetDirectory,
+            String sshpublickeyFilename){
+		File f = new File(sshpublickeyFilename);
+		//Create an instance of the existing repository
+		GITManager manager = new GITManager(url, user, password, f.getAbsolutePath());
+		Git gitInstance = manager.getGitInstance2(targetDirectory, branchName);
+		
+		if (gitInstance!=null) {
+			GitPushCommitResult result = manager.push2(gitInstance);
+
+		}
+	}	
+	
+	/**
+	 * This method allows the user to get files form a Remote repository only passing their paths
+	 * @param url Remote repository URL (using ssh)
+	 * @param user User (not used)
+	 * @param password Password (not used)
+	 * @param branchName The name of the branch
+	 * @param targetDirectory The Local Git Repository (if not exist, the remote Repository will be cloned)
+	 * @param commitMessage The message used to commit
+	 * @param commitUser The committer name
+	 * @param commitEmail The committer email
+	 * @param sshpublickeyFilename The private ssh key used to connect the remote repository
+	 */
+	public void listLocalRepositoryBranches(		
+			                    String LocalDirectory) {
+		File workingDirectory = new File(LocalDirectory);
+		try {
+		Git git = Git.open(workingDirectory); 
+		 
+		try {
+			// TEST "branchList"
+			 List<Ref> call = git.branchList().call();
+			 for (Ref ref : call) {
+			        System.out.println("Branch: " + ref + " " + ref.getName() + " " + ref.getObjectId().getName());
+			    }
+		  } catch (GitAPIException e) {
+			    throw new IOException("Unable to list branches", e);
+			  }
+		} catch (IOException e) {
+			// TODO Bloc catch auto-généré
+			e.printStackTrace();
+		}
+	}
+	
+	public boolean CheckLocalRepository(		
+            String LocalDirectory) {
+		File workingDirectory = new File(LocalDirectory);
+		try {
+		Git git = Git.open(workingDirectory); 
+		try {
+		// TEST "branchList"
+		List<Ref> call = git.branchList().call();
+		for (Ref ref : call) {
+		System.out.println("Branch: " + ref + " " + ref.getName() + " " + ref.getObjectId().getName());
+		return true;
+		}
+		} catch (GitAPIException e) {
+		throw new IOException("Unable to list branches", e);
+		}
+		} catch (IOException e) {
+		// TODO Bloc catch auto-généré
+		e.printStackTrace();
+		}
+		return false;
+}
+	/**
+	 * This method allows the user to get files form a Remote repository only passing their paths
+	 * @param url Remote repository URL (using ssh)
+	 * @param user User (not used)
+	 * @param password Password (not used)
+	 * @param branchName The name of the branch
+	 * @param targetDirectory The directory where the clone local repository will be created
+	 * @param zipFileName The zip file name where the files will be stored
+	 * @param sshpublickeyFilename The private ssh key used to connect the remote repository
+	 */
+	public boolean getListChangeFromRemoteRepository(String url, 
+			                    String user, String password,
+			                    String branchName,			                    
+			                    String CommitUIDTag,			                    
+			                    String targetDirectory, 
+			                    String sshpublickeyFilename,
+        						String fileListFileName) {
+		File f = new File(sshpublickeyFilename);
+		//Cretae an instance of the existing repository
+		GITManager manager = new GITManager(url, user, password, f.getAbsolutePath());
+		Git gitInstance = manager.getGitInstance2(targetDirectory, branchName);
+		
+		if (gitInstance!=null) {
+			Repository repository =  gitInstance.getRepository();
+			try{
+				// First try to get the Trees references related to the sourceTag and the targetBranch
+				ObjectReader reader = repository.newObjectReader();
+
+				//Get the current tree 
+				ObjectId targetTreeId = repository.resolve(branchName+"^{tree}");
+				if (targetTreeId==null) {
+					return false;
+				}
+				CanonicalTreeParser newTreeIter = new CanonicalTreeParser();
+				newTreeIter.reset(reader, targetTreeId);
+				
+				//Get the tree related to the source Tag
+				ObjectId sourceTreeId = gitInstance.getRepository().resolve(CommitUIDTag+"^{tree}");
+				if (sourceTreeId==null) {
+			        System.out.println("Error - Delta Dicovering 1: TAG "+CommitUIDTag+" not found!");
+					return false;
+				}
+				CanonicalTreeParser oldTreeIter = new CanonicalTreeParser();
+				oldTreeIter.reset(reader, sourceTreeId);
+				// Get the differences between source and target
+				List<DiffEntry> listDiffs = 
+						gitInstance.diff().setOldTree(oldTreeIter).setNewTree(newTreeIter).setShowNameAndStatusOnly(true).call();
+				
+				// If difference Exist
+				if (listDiffs!=null) {
+					//Select object to get
+		            //  
+		            FileWriter fileWriter = 
+		                new FileWriter(fileListFileName);
+		            // Always wrap FileReader in BufferedReader.
+		            BufferedWriter bufferedWriter = 
+		                new BufferedWriter(fileWriter);
+			        //
+		            int nbpaths = 0;
+					//Loop and the diff to declare the artifact candidate
+					for (int i=0;i<listDiffs.size();i++) {
+						DiffEntry entry = listDiffs.get(i);
+						String filePath = entry.getNewPath();
+						if (filePath.equalsIgnoreCase("/dev/null")) {
+							filePath = entry.getOldPath();
+						}
+						if (filePath!=null) {								
+							//Exclude the metadata modification
+				/*					if (!filePath.contains(".ibmi")) {								
+								File candidate = new File(targetDirectory,filePath);
+								//Bug Git : remove #35
+								String fileName = candidate.getCanonicalPath();		
+								if (fileName.contains("#35")) {
+									String message = "Cleaning File Name: "+fileName;
+									fileName = fileName.replace("#035", "#");
+									message = message + " to "+fileName;
+									logger.logVerbose(MessageManager.getMessage(IGITMessages.VBS_MESSAGE_INFO,"Cleaning File Name",message));									
+								}
+								if (!fileName.endsWith("arcad01.md")) { //This file is automatically created when create a Arcad Commit
+				*/
+		            		nbpaths += 1;
+							String FileAct;
+							if (entry.getChangeType()!=DiffEntry.ChangeType.DELETE) {								
+									FileAct = "+";
+									} else {
+										FileAct = "-";
+									}
+							System.out.println("==> " + nbpaths + " " + FileAct + " " + filePath);
+							// \r corresponds in unix to x0D 
+				            bufferedWriter.write(FileAct + filePath + "\r");
+				            bufferedWriter.newLine();  // and here it's only does x0A
+
+						} else {
+					        System.out.println("Unable to find the correct file path");								
+						}
+				    }
+					// Always close files.
+		            bufferedWriter.close();         
+				}
+			return true;
+	        
+		} catch(FileNotFoundException ex) {
+	            System.out.println(
+	                "Unable to open file '" + 
+	                		fileListFileName + "'");                
+		} catch (RevisionSyntaxException e) {		
+	        System.out.println("Error - Delta Dicovering 2: TAG "+CommitUIDTag+" not found!");
+		} catch (AmbiguousObjectException e) {
+	        System.out.println("Error - Delta Dicovering 3: TAG "+CommitUIDTag+" not found!");
+		} catch (IncorrectObjectTypeException e) {
+	        System.out.println("Error - Delta Dicovering 4: TAG "+CommitUIDTag+" not found!");
+		} catch (GitAPIException e) {
+	        System.out.println("Error - Delta Dicovering 5: TAG "+CommitUIDTag+" not found!");
+		} catch (IOException e) {
+            System.out.println(
+	                "Error writing file '" 
+	                + fileListFileName + "'");                  
+		}
+		}
+		return false;
+	}
+
+	
+}
